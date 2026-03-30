@@ -102,6 +102,7 @@ class MovimientoController extends Controller
             'dependencia' => ['nullable', 'string', 'max:100'],
             'documento'   => ['nullable', 'string', 'max:50'],
             'categoria'   => ['nullable', 'string', 'max:100'],
+            'tipo'        => ['nullable', 'in:egreso,ingreso'],
             'monto'       => ['required', 'numeric', 'gt:0'],
         ]);
 
@@ -114,7 +115,11 @@ class MovimientoController extends Controller
         $movimiento->debito           = (float) $validated['monto'];
         $movimiento->credito          = 0;
 
-        $this->ajustarMontosPorCategoria($movimiento, $movimiento->categoria_manual);
+        $this->ajustarMontosPorCategoria(
+            $movimiento,
+            $movimiento->categoria_manual,
+            $validated['tipo'] ?? null,
+        );
         $movimiento->save();
         $this->upsertRegla($movimiento->descripcion, $movimiento->categoria_manual);
 
@@ -156,17 +161,32 @@ class MovimientoController extends Controller
         ]);
     }
 
-    private function ajustarMontosPorCategoria(Movimiento $movimiento, ?string $categoria): void
-    {
-        if ($categoria === null) {
-            return;
-        }
-
+    private function ajustarMontosPorCategoria(
+        Movimiento $movimiento,
+        ?string $categoria,
+        ?string $tipo = null,
+    ): void {
         $debito    = (float) ($movimiento->debito ?? 0);
         $credito   = (float) ($movimiento->credito ?? 0);
         $montoBase = max($debito, $credito);
 
         if ($montoBase <= 0) {
+            return;
+        }
+
+        if ($tipo === 'ingreso') {
+            $movimiento->credito = $montoBase;
+            $movimiento->debito  = 0;
+            return;
+        }
+
+        if ($tipo === 'egreso') {
+            $movimiento->debito  = $montoBase;
+            $movimiento->credito = 0;
+            return;
+        }
+
+        if ($categoria === null) {
             return;
         }
 
