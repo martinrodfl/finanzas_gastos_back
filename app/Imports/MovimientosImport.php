@@ -2,6 +2,7 @@
 namespace App\Imports;
 
 use App\Models\Movimiento;
+use App\Services\CategoriaReglaMatcher;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -10,6 +11,7 @@ use Maatwebsite\Excel\Concerns\WithValidation;
 class MovimientosImport implements ToModel, WithHeadingRow, WithValidation
 {
     private int $headingRow;
+    private CategoriaReglaMatcher $categoriaMatcher;
 
     private int $totalFilas     = 0;
     private int $guardados      = 0;
@@ -20,7 +22,8 @@ class MovimientosImport implements ToModel, WithHeadingRow, WithValidation
 
     public function __construct(int $headingRow = 36)
     {
-        $this->headingRow = $headingRow;
+        $this->headingRow       = $headingRow;
+        $this->categoriaMatcher = new CategoriaReglaMatcher();
     }
 
     public function model(array $row)
@@ -30,13 +33,14 @@ class MovimientosImport implements ToModel, WithHeadingRow, WithValidation
         $valores = array_values($row);
 
         $movimiento = [
-            'fecha'       => $this->parseFecha($this->getCampo($row, $valores, ['fecha', 'fecha_movimiento', 'fecha_operacion'], 0)),
-            'descripcion' => $this->clean($this->getCampo($row, $valores, ['descripcion', 'descripci_n', 'detalle', 'concepto'], 1)),
-            'documento'   => $this->clean($this->getCampo($row, $valores, ['documento', 'nro_documento', 'numero_documento'], 2)),
-            'asunto'      => $this->clean($this->getCampo($row, $valores, ['asunto', 'referencia', 'observacion'], 3)),
-            'dependencia' => $this->clean($this->getCampo($row, $valores, ['dependencia', 'sucursal', 'comercio'], 4)),
-            'debito'      => $this->parseNumero($this->getCampo($row, $valores, ['debito', 'd_bito', 'egreso', 'debe'], 5)),
-            'credito'     => $this->parseNumero($this->getCampo($row, $valores, ['credito', 'cr_dito', 'ingreso', 'haber'], 6)),
+            'fecha'            => $this->parseFecha($this->getCampo($row, $valores, ['fecha', 'fecha_movimiento', 'fecha_operacion'], 0)),
+            'descripcion'      => $this->clean($this->getCampo($row, $valores, ['descripcion', 'descripci_n', 'detalle', 'concepto'], 1)),
+            'documento'        => $this->clean($this->getCampo($row, $valores, ['documento', 'nro_documento', 'numero_documento'], 2)),
+            'asunto'           => $this->clean($this->getCampo($row, $valores, ['asunto', 'referencia', 'observacion'], 3)),
+            'dependencia'      => $this->clean($this->getCampo($row, $valores, ['dependencia', 'sucursal', 'comercio'], 4)),
+            'debito'           => $this->parseNumero($this->getCampo($row, $valores, ['debito', 'd_bito', 'egreso', 'debe'], 5)),
+            'credito'          => $this->parseNumero($this->getCampo($row, $valores, ['credito', 'cr_dito', 'ingreso', 'haber'], 6)),
+            'categoria_manual' => null,
         ];
 
         if ($this->esFilaVacia($movimiento)) {
@@ -50,6 +54,8 @@ class MovimientosImport implements ToModel, WithHeadingRow, WithValidation
             $this->duplicados++;
             return null;
         }
+
+        $movimiento['categoria_manual'] = $this->categoriaMatcher->resolver($movimiento['descripcion']);
 
         $this->guardados++;
 

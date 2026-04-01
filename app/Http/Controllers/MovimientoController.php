@@ -49,7 +49,9 @@ class MovimientoController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $reglas = DB::table('categoria_reglas')->pluck('categoria', 'descripcion');
+        $reglas = DB::table('categorias')
+            ->whereNotNull('patron')
+            ->pluck('nombre', 'patron');
 
         $movimientosConCategoria = $movimientos->map(function (Movimiento $movimiento) use ($reglas) {
             return [
@@ -202,9 +204,10 @@ class MovimientoController extends Controller
 
     public function reglas()
     {
-        $reglas = DB::table('categoria_reglas')
-            ->orderBy('descripcion')
-            ->get(['id', 'descripcion', 'categoria']);
+        $reglas = DB::table('categorias')
+            ->whereNotNull('patron')
+            ->orderBy('patron')
+            ->get(['id', 'patron as descripcion', 'nombre as categoria', 'icono']);
 
         return response()->json($reglas);
     }
@@ -212,29 +215,39 @@ class MovimientoController extends Controller
     public function storeRegla(Request $request)
     {
         $validated = $request->validate([
-            'descripcion' => ['required', 'string', 'max:255'],
+            'descripcion' => ['required', 'string', 'max:300'],
             'categoria'   => ['required', 'string', 'max:100'],
         ]);
 
-        DB::table('categoria_reglas')->upsert(
+        $icono = DB::table('categorias')
+            ->where('nombre', $validated['categoria'])
+            ->value('icono') ?? '🏷';
+
+        DB::table('categorias')->upsert(
             [
-                'descripcion' => $validated['descripcion'],
-                'categoria'   => $validated['categoria'],
+                'nombre'     => $validated['categoria'],
+                'icono'      => $icono,
+                'patron'     => $validated['descripcion'],
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
-            ['descripcion'],
-            ['categoria']
+            ['patron'],
+            ['nombre', 'icono', 'updated_at']
         );
 
-        $regla = DB::table('categoria_reglas')
-            ->where('descripcion', $validated['descripcion'])
-            ->first();
+        $regla = DB::table('categorias')
+            ->where('patron', $validated['descripcion'])
+            ->first(['id', 'patron as descripcion', 'nombre as categoria', 'icono']);
 
         return response()->json(['success' => true, 'regla' => $regla], 201);
     }
 
     public function destroyRegla(int $id)
     {
-        $deleted = DB::table('categoria_reglas')->where('id', $id)->delete();
+        $deleted = DB::table('categorias')
+            ->where('id', $id)
+            ->whereNotNull('patron')
+            ->delete();
 
         if (! $deleted) {
             return response()->json(['message' => 'Regla no encontrada'], 404);
@@ -249,13 +262,20 @@ class MovimientoController extends Controller
             return;
         }
 
-        DB::table('categoria_reglas')->upsert(
+        $icono = DB::table('categorias')
+            ->where('nombre', $categoria)
+            ->value('icono') ?? '🏷';
+
+        DB::table('categorias')->upsert(
             [
-                'descripcion' => $descripcion,
-                'categoria'   => $categoria,
+                'nombre'     => $categoria,
+                'icono'      => $icono,
+                'patron'     => $descripcion,
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
-            ['descripcion'],
-            ['categoria']
+            ['patron'],
+            ['nombre', 'icono', 'updated_at']
         );
     }
 
