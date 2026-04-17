@@ -65,6 +65,7 @@ class MovimientoController extends Controller
                 'credito'          => (float) $movimiento->credito,
                 'categoria_manual' => $movimiento->categoria_manual,
                 'categoria_regla'  => $reglas[$movimiento->descripcion] ?? null,
+                'gasto_fijo'       => $movimiento->gasto_fijo,
             ];
         })->values();
 
@@ -137,6 +138,7 @@ class MovimientoController extends Controller
                 'credito'          => (float) $movimiento->credito,
                 'categoria_manual' => $movimiento->categoria_manual,
                 'categoria_regla'  => null,
+                'gasto_fijo'       => $movimiento->gasto_fijo,
             ],
         ], 201);
     }
@@ -200,6 +202,23 @@ class MovimientoController extends Controller
 
         $movimiento->debito  = $montoBase;
         $movimiento->credito = 0;
+    }
+
+    public function updateGastoFijo(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'gasto_fijo' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $movimiento             = Movimiento::query()->findOrFail($id);
+        $movimiento->gasto_fijo = $validated['gasto_fijo'] ?? null;
+        $movimiento->save();
+
+        return response()->json([
+            'success'    => true,
+            'id'         => $movimiento->id,
+            'gasto_fijo' => $movimiento->gasto_fijo,
+        ]);
     }
 
     public function reglas()

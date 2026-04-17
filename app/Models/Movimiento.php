@@ -18,6 +18,7 @@ class Movimiento extends Model
         'debito',
         'credito',
         'categoria_manual',
+        'gasto_fijo',
     ];
 
     protected $casts = [
