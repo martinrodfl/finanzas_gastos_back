@@ -204,6 +204,40 @@ class MovimientoController extends Controller
         $movimiento->credito = 0;
     }
 
+    public function categoriasPorMes()
+    {
+        $reglas = DB::table('categorias')
+            ->whereNotNull('patron')
+            ->pluck('nombre', 'patron');
+
+        $filas = [];
+
+        Movimiento::query()
+            ->whereNotNull('fecha')
+            ->get(['fecha', 'descripcion', 'debito', 'categoria_manual'])
+            ->each(function (Movimiento $movimiento) use ($reglas, &$filas) {
+                $mes = optional($movimiento->fecha)->format('Y-m');
+                if (! $mes) {
+                    return;
+                }
+                $debito = (float) $movimiento->debito;
+                if ($debito <= 0) {
+                    return;
+                }
+                $categoria = $movimiento->categoria_manual
+                    ?? $reglas[$movimiento->descripcion]
+                    ?? 'Sin categoría';
+
+                $key = $mes.'|'.$categoria;
+                if (! isset($filas[$key])) {
+                    $filas[$key] = ['mes' => $mes, 'categoria' => $categoria, 'total' => 0.0];
+                }
+                $filas[$key]['total'] += $debito;
+            });
+
+        return response()->json(array_values($filas));
+    }
+
     public function updateGastoFijo(Request $request, int $id)
     {
         $validated = $request->validate([
