@@ -7,6 +7,7 @@ Route::post('/movimientos/import', [MovimientoController::class, 'import']);
 Route::get('/movimientos/meses', [MovimientoController::class, 'meses']);
 Route::get('/movimientos/resumen', [MovimientoController::class, 'resumen']);
 Route::get('/movimientos/categorias-por-mes', [MovimientoController::class, 'categoriasPorMes']);
+Route::get('/movimientos/buscar', [MovimientoController::class, 'buscar']);
 Route::get('/movimientos', [MovimientoController::class, 'index']);
 Route::post('/movimientos', [MovimientoController::class, 'store']);
 Route::patch('/movimientos/{id}/categoria', [MovimientoController::class, 'updateCategoria']);

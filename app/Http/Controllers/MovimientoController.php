@@ -72,6 +72,109 @@ class MovimientoController extends Controller
         return response()->json($movimientosConCategoria);
     }
 
+    public function buscar(Request $request)
+    {
+        $validated = $request->validate([
+            'q'           => ['nullable', 'string', 'max:200'],
+            'categoria'   => ['nullable', 'string', 'max:100'],
+            'fecha_desde' => ['nullable', 'date'],
+            'fecha_hasta' => ['nullable', 'date'],
+            'tipo'        => ['nullable', 'in:ingreso,egreso'],
+            'monto_min'   => ['nullable', 'numeric', 'min:0'],
+            'monto_max'   => ['nullable', 'numeric', 'min:0'],
+            'per_page'    => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $texto      = isset($validated['q']) ? trim($validated['q']) : null;
+        $categoria  = $validated['categoria'] ?? null;
+        $fechaDesde = $validated['fecha_desde'] ?? null;
+        $fechaHasta = $validated['fecha_hasta'] ?? null;
+        $tipo       = $validated['tipo'] ?? null;
+        $montoMin   = $validated['monto_min'] ?? null;
+        $montoMax   = $validated['monto_max'] ?? null;
+        $perPage    = $validated['per_page'] ?? 25;
+
+        $paginador = Movimiento::query()
+            ->leftJoin('categorias', 'categorias.patron', '=', 'movimientos.descripcion')
+            ->select('movimientos.*', 'categorias.nombre as categoria_regla_calc')
+            ->when($texto, function ($query) use ($texto) {
+                $query->where(function ($q) use ($texto) {
+                    $q->where('movimientos.descripcion', 'like', "%{$texto}%")
+                        ->orWhere('movimientos.asunto', 'like', "%{$texto}%")
+                        ->orWhere('movimientos.documento', 'like', "%{$texto}%")
+                        ->orWhere('movimientos.dependencia', 'like', "%{$texto}%");
+                });
+            })
+            ->when($fechaDesde, function ($query) use ($fechaDesde) {
+                $query->whereDate('movimientos.fecha', '>=', $fechaDesde);
+            })
+            ->when($fechaHasta, function ($query) use ($fechaHasta) {
+                $query->whereDate('movimientos.fecha', '<=', $fechaHasta);
+            })
+            ->when($tipo === 'egreso', function ($query) {
+                $query->where('movimientos.debito', '>', 0);
+            })
+            ->when($tipo === 'ingreso', function ($query) {
+                $query->where('movimientos.credito', '>', 0);
+            })
+        // debito y credito son mutuamente excluyentes (ver ajustarMontosPorCategoria),
+        // por eso la suma equivale al "monto" del movimiento en cualquiera de los dos sentidos.
+        // El CAST(... AS DECIMAL) es necesario porque el parámetro llega como string desde
+        // el query param y SQLite no le aplica afinidad numérica al comparar contra una
+        // expresión calculada (falla en tests con :memory:); DECIMAL es válido también en MySQL.
+            ->when($montoMin !== null, function ($query) use ($montoMin) {
+                $query->whereRaw('(movimientos.debito + movimientos.credito) >= CAST(? AS DECIMAL(12,2))', [$montoMin]);
+            })
+            ->when($montoMax !== null, function ($query) use ($montoMax) {
+                $query->whereRaw('(movimientos.debito + movimientos.credito) <= CAST(? AS DECIMAL(12,2))', [$montoMax]);
+            })
+            ->when($categoria, function ($query) use ($categoria) {
+                $query->where(function ($q) use ($categoria) {
+                    $q->where('movimientos.categoria_manual', $categoria)
+                        ->orWhere(function ($q2) use ($categoria) {
+                            $q2->whereNull('movimientos.categoria_manual')
+                                ->where('categorias.nombre', $categoria);
+                        });
+
+                    if (Str::lower(trim($categoria)) === 'otros') {
+                        $q->orWhere(function ($q3) {
+                            $q3->whereNull('movimientos.categoria_manual')
+                                ->whereNull('categorias.nombre');
+                        });
+                    }
+                });
+            })
+            ->orderByDesc('movimientos.fecha')
+            ->orderByDesc('movimientos.id')
+            ->paginate($perPage);
+
+        $items = collect($paginador->items())->map(function (Movimiento $movimiento) {
+            return [
+                'id'               => $movimiento->id,
+                'fecha'            => optional($movimiento->fecha)->format('Y-m-d'),
+                'descripcion'      => $movimiento->descripcion,
+                'asunto'           => $movimiento->asunto,
+                'documento'        => $movimiento->documento,
+                'dependencia'      => $movimiento->dependencia,
+                'debito'           => (float) $movimiento->debito,
+                'credito'          => (float) $movimiento->credito,
+                'categoria_manual' => $movimiento->categoria_manual,
+                'categoria_regla'  => $movimiento->categoria_regla_calc,
+                'gasto_fijo'       => $movimiento->gasto_fijo,
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'current_page' => $paginador->currentPage(),
+                'last_page'    => $paginador->lastPage(),
+                'per_page'     => $paginador->perPage(),
+                'total'        => $paginador->total(),
+            ],
+        ]);
+    }
+
     public function resumen()
     {
         $resumen = Movimiento::query()
@@ -224,11 +327,9 @@ class MovimientoController extends Controller
                 if ($debito <= 0) {
                     return;
                 }
-                $categoria = $movimiento->categoria_manual
-                    ?? $reglas[$movimiento->descripcion]
-                    ?? 'Sin categoría';
+                $categoria = $movimiento->categoria_manual ?? $reglas[$movimiento->descripcion] ?? 'Sin categoría';
 
-                $key = $mes.'|'.$categoria;
+                $key = $mes . '|' . $categoria;
                 if (! isset($filas[$key])) {
                     $filas[$key] = ['mes' => $mes, 'categoria' => $categoria, 'total' => 0.0];
                 }
