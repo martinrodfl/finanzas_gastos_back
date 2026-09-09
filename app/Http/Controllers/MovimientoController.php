@@ -356,6 +356,33 @@ class MovimientoController extends Controller
         ]);
     }
 
+    public function updateDetalle(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'descripcion' => ['sometimes', 'required', 'string', 'max:1000'],
+            'asunto'      => ['sometimes', 'nullable', 'string', 'max:1000'],
+        ]);
+
+        $movimiento = Movimiento::query()->findOrFail($id);
+
+        // 'sometimes' permite guardar un solo campo por request (blur por columna)
+        if (array_key_exists('descripcion', $validated)) {
+            $movimiento->descripcion = trim($validated['descripcion']);
+        }
+        if (array_key_exists('asunto', $validated)) {
+            $movimiento->asunto = $validated['asunto'] !== null ? trim($validated['asunto']) : null;
+        }
+
+        $movimiento->save();
+
+        return response()->json([
+            'success'     => true,
+            'id'          => $movimiento->id,
+            'descripcion' => $movimiento->descripcion,
+            'asunto'      => $movimiento->asunto,
+        ]);
+    }
+
     public function reglas()
     {
         $reglas = DB::table('categorias')
